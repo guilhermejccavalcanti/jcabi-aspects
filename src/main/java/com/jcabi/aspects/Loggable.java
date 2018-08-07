@@ -97,9 +97,7 @@ import java.util.concurrent.TimeUnit;
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ ElementType.METHOD, ElementType.TYPE })
-@SuppressWarnings({
-    "PMD.VariableNamingConventions", "PMD.RedundantFieldInitializer"
-})
+@SuppressWarnings({ "PMD.VariableNamingConventions", "PMD.RedundantFieldInitializer" })
 public @interface Loggable {
 
     /**
@@ -166,7 +164,7 @@ public @interface Loggable {
      *
      * @since 0.7.17
      */
-    Class<? extends Throwable>[] ignore() default { };
+    Class<? extends Throwable>[] ignore() default {};
 
     /**
      * Skip logging of result, replacing it with dots?
@@ -190,6 +188,15 @@ public @interface Loggable {
     int precision() default 2;
 
     /**
+     * The name of the logger to be used. If not specified, defaults to the
+     * class name of the annotated class or method.
+     * @since 0.18
+     * @todo #85 Let's document the usage of this parameter in the
+     *  annotation-loggable.apt.vm site page.
+     */
+    String name() default "";
+
+    /**
      * Identifies an exception that is never logged by {@link Loggable} if/when
      * being thrown out of an annotated method.
      *
@@ -208,5 +215,4 @@ public @interface Loggable {
     @Target(ElementType.TYPE)
     public @interface Quiet {
     }
-
 }

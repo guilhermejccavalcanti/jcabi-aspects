@@ -58,53 +58,36 @@ import org.aspectj.lang.reflect.MethodSignature;
  * @checkstyle IllegalThrows (500 lines)
  */
 @Aspect
-@SuppressWarnings({
-    "PMD.AvoidCatchingThrowable",
-    "PMD.TooManyMethods",
-    "PMD.CyclomaticComplexity"
-})
+@SuppressWarnings({ "PMD.AvoidCatchingThrowable", "PMD.TooManyMethods", "PMD.CyclomaticComplexity" })
 public final class MethodLogger {
 
     /**
      * Currently running methods.
      */
-    private final transient Set<MethodLogger.Marker> running =
-        new ConcurrentSkipListSet<MethodLogger.Marker>();
+    private final transient Set<MethodLogger.Marker> running = new ConcurrentSkipListSet<MethodLogger.Marker>();
 
     /**
      * Public ctor.
      */
     @SuppressWarnings("PMD.DoNotUseThreads")
     public MethodLogger() {
-        final ScheduledExecutorService monitor =
-            Executors.newSingleThreadScheduledExecutor(
-                new NamedThreads(
-                    "loggable",
-                    "watching of @Loggable annotated methods"
-                )
-            );
-        monitor.scheduleWithFixedDelay(
-            new FutureTask<Void>(
-                new VerboseRunnable(
-                    new Runnable() {
-                        @Override
-                        public void run() {
-                            for (final MethodLogger.Marker marker
-                                : MethodLogger.this.running) {
-                                marker.monitor();
-                            }
-                        }
-                    }
-                ), null
-            ) {
-                @Override
-                protected void done() {
-                    Logger.debug(this, "Logging monitor thread interrupted");
-                    monitor.shutdown();
+        final ScheduledExecutorService monitor = Executors.newSingleThreadScheduledExecutor(new NamedThreads("loggable", "watching of @Loggable annotated methods"));
+        monitor.scheduleWithFixedDelay(new FutureTask<Void>(new VerboseRunnable(new Runnable() {
+
+            @Override
+            public void run() {
+                for (final MethodLogger.Marker marker : MethodLogger.this.running) {
+                    marker.monitor();
                 }
-            },
-            1, 1, TimeUnit.SECONDS
-        );
+            }
+        }), null) {
+
+            @Override
+            protected void done() {
+                Logger.debug(this, "Logging monitor thread interrupted");
+                monitor.shutdown();
+            }
+        }, 1, 1, TimeUnit.SECONDS);
     }
 
     /**
@@ -117,27 +100,15 @@ public final class MethodLogger {
      * @return The result of call
      * @throws Throwable If something goes wrong inside
      */
-    @Around(
-        // @checkstyle StringLiteralsConcatenation (7 lines)
-        "execution(public * (@com.jcabi.aspects.Loggable *).*(..))"
-        + " && !execution(String *.toString())"
-        + " && !execution(int *.hashCode())"
-        + " && !execution(boolean *.canEqual(Object))"
-        + " && !execution(boolean *.equals(Object))"
-        + " && !cflow(call(com.jcabi.aspects.aj.MethodLogger.new()))"
-    )
+    @Around(// @checkstyle StringLiteralsConcatenation (7 lines)
+    "execution(public * (@com.jcabi.aspects.Loggable *).*(..))" + " && !execution(String *.toString())" + " && !execution(int *.hashCode())" + " && !execution(boolean *.canEqual(Object))" + " && !execution(boolean *.equals(Object))" + " && !cflow(call(com.jcabi.aspects.aj.MethodLogger.new()))")
     public Object wrapClass(final ProceedingJoinPoint point) throws Throwable {
-        final Method method =
-            MethodSignature.class.cast(point.getSignature()).getMethod();
+        final Method method = MethodSignature.class.cast(point.getSignature()).getMethod();
         Object output;
         if (method.isAnnotationPresent(Loggable.class)) {
             output = point.proceed();
         } else {
-            output = this.wrap(
-                point,
-                method,
-                method.getDeclaringClass().getAnnotation(Loggable.class)
-            );
+            output = this.wrap(point, method, method.getDeclaringClass().getAnnotation(Loggable.class));
         }
         return output;
     }
@@ -152,15 +123,11 @@ public final class MethodLogger {
      * @return The result of call
      * @throws Throwable If something goes wrong inside
      */
-    @Around(
-        // @checkstyle StringLiteralsConcatenation (2 lines)
-        "(execution(* *(..)) || initialization(*.new(..)))"
-        + " && @annotation(com.jcabi.aspects.Loggable)"
-    )
+    @Around(// @checkstyle StringLiteralsConcatenation (2 lines)
+    "(execution(* *(..)) || initialization(*.new(..)))" + " && @annotation(com.jcabi.aspects.Loggable)")
     @SuppressWarnings("PMD.AvoidCatchingThrowable")
     public Object wrapMethod(final ProceedingJoinPoint point) throws Throwable {
-        final Method method =
-            MethodSignature.class.cast(point.getSignature()).getMethod();
+        final Method method = MethodSignature.class.cast(point.getSignature()).getMethod();
         return this.wrap(point, method, method.getAnnotation(Loggable.class));
     }
 
@@ -173,100 +140,42 @@ public final class MethodLogger {
      * @throws Throwable If something goes wrong inside
      * @checkstyle ExecutableStatementCount (50 lines)
      */
-    private Object wrap(final ProceedingJoinPoint point, final Method method,
-        final Loggable annotation) throws Throwable {
+    private Object wrap(final ProceedingJoinPoint point, final Method method, final Loggable annotation) throws Throwable {
         if (Thread.interrupted()) {
-            throw new IllegalStateException(
-                String.format(
-                    "thread '%s' in group '%s' interrupted",
-                    Thread.currentThread().getName(),
-                    Thread.currentThread().getThreadGroup().getName()
-                )
-            );
+            throw new IllegalStateException(String.format("thread '%s' in group '%s' interrupted", Thread.currentThread().getName(), Thread.currentThread().getThreadGroup().getName()));
         }
         final long start = System.nanoTime();
-        final MethodLogger.Marker marker =
-            new MethodLogger.Marker(point, annotation);
+        final MethodLogger.Marker marker = new MethodLogger.Marker(point, annotation);
         this.running.add(marker);
         try {
-            final Class<?> type = method.getDeclaringClass();
+            final Object logger = this.logger(method, annotation.name());
             int level = annotation.value();
             final int limit = annotation.limit();
             if (annotation.prepend()) {
-                LogHelper.log(
-                    level,
-                    type,
-                    new StringBuilder(
-                        Mnemos.toText(
-                            point,
-                            annotation.trim(),
-                            annotation.skipArgs()
-                        )
-                    ).append(": entered").toString()
-                );
+                LogHelper.log(level, logger, new StringBuilder(Mnemos.toText(point, annotation.trim(), annotation.skipArgs())).append(": entered").toString());
             }
             final Object result = point.proceed();
             final long nano = System.nanoTime() - start;
             final boolean over = nano > annotation.unit().toNanos(limit);
-            if (LogHelper.enabled(level, type) || over) {
+            if (LogHelper.enabled(level, logger) || over) {
                 final StringBuilder msg = new StringBuilder();
-                msg.append(
-                    Mnemos.toText(
-                        point,
-                        annotation.trim(),
-                        annotation.skipArgs()
-                    )
-                ).append(':');
+                msg.append(Mnemos.toText(point, annotation.trim(), annotation.skipArgs())).append(':');
                 if (!method.getReturnType().equals(Void.TYPE)) {
-                    msg.append(' ').append(
-                        Mnemos.toText(
-                            result,
-                            annotation.trim(),
-                            annotation.skipResult()
-                        )
-                    );
+                    msg.append(' ').append(Mnemos.toText(result, annotation.trim(), annotation.skipResult()));
                 }
-                msg.append(
-                    Logger.format(
-                        String.format(
-                            " in %%[nano].%ds", annotation.precision()
-                        ),
-                        nano
-                    )
-                );
+                msg.append(Logger.format(String.format(" in %%[nano].%ds", annotation.precision()), nano));
                 if (over) {
                     level = Loggable.WARN;
                     msg.append(" (too slow!)");
                 }
-                LogHelper.log(
-                    level,
-                    type,
-                    msg.toString()
-                );
+                LogHelper.log(level, logger, msg.toString());
             }
             return result;
         // @checkstyle IllegalCatch (1 line)
         } catch (final Throwable ex) {
-            if (!MethodLogger.contains(annotation.ignore(), ex)
-                && !ex.getClass().isAnnotationPresent(Loggable.Quiet.class)) {
+            if (!MethodLogger.contains(annotation.ignore(), ex) && !ex.getClass().isAnnotationPresent(Loggable.Quiet.class)) {
                 final StackTraceElement trace = ex.getStackTrace()[0];
-                LogHelper.log(
-                    Loggable.ERROR,
-                    method.getDeclaringClass(),
-                    Logger.format(
-                        "%s: thrown %s out of %s#%s[%d] in %[nano]s",
-                        Mnemos.toText(
-                            point,
-                            annotation.trim(),
-                            annotation.skipArgs()
-                        ),
-                        Mnemos.toText(ex),
-                        trace.getClassName(),
-                        trace.getMethodName(),
-                        trace.getLineNumber(),
-                        System.nanoTime() - start
-                    )
-                );
+                LogHelper.log(Loggable.ERROR, method.getDeclaringClass(), Logger.format("%s: thrown %s out of %s#%s[%d] in %[nano]s", Mnemos.toText(point, annotation.trim(), annotation.skipArgs()), Mnemos.toText(ex), trace.getClassName(), trace.getMethodName(), trace.getLineNumber(), System.nanoTime() - start));
             }
             throw ex;
         } finally {
@@ -275,13 +184,28 @@ public final class MethodLogger {
     }
 
     /**
+     * Get the destination logger for this method.
+     * @param method The method
+     * @param name The Loggable annotation
+     * @return The logger that will be used
+     */
+    private Object logger(final Method method, final String name) {
+        final Object source;
+        if (name.isEmpty()) {
+            source = method.getDeclaringClass();
+        } else {
+            source = name;
+        }
+        return source;
+    }
+
+    /**
      * Checks whether array of types contains given type.
      * @param array Array of them
      * @param exp The exception to find
      * @return TRUE if it's there
      */
-    private static boolean contains(final Class<? extends Throwable>[] array,
-        final Throwable exp) {
+    private static boolean contains(final Class<? extends Throwable>[] array, final Throwable exp) {
         boolean contains = false;
         for (final Class<? extends Throwable> type : array) {
             if (MethodLogger.instanceOf(exp.getClass(), type)) {
@@ -298,11 +222,8 @@ public final class MethodLogger {
      * @param parent Parent type
      * @return TRUE if child is really a child of a parent
      */
-    private static boolean instanceOf(final Class<?> child,
-        final Class<?> parent) {
-        boolean instance = child.equals(parent)
-            || (child.getSuperclass() != null
-            && MethodLogger.instanceOf(child.getSuperclass(), parent));
+    private static boolean instanceOf(final Class<?> child, final Class<?> parent) {
+        boolean instance = child.equals(parent) || (child.getSuperclass() != null && MethodLogger.instanceOf(child.getSuperclass(), parent));
         if (!instance) {
             for (final Class<?> iface : child.getInterfaces()) {
                 instance = MethodLogger.instanceOf(iface, parent);
@@ -325,14 +246,7 @@ public final class MethodLogger {
             if (text.length() > 0) {
                 text.append(", ");
             }
-            text.append(
-                String.format(
-                    "%s#%s[%d]",
-                    trace[pos].getClassName(),
-                    trace[pos].getMethodName(),
-                    trace[pos].getLineNumber()
-                )
-            );
+            text.append(String.format("%s#%s[%d]", trace[pos].getClassName(), trace[pos].getMethodName(), trace[pos].getLineNumber()));
         }
         return text.toString();
     }
@@ -340,29 +254,34 @@ public final class MethodLogger {
     /**
      * Marker of a running method.
      */
-    private static final class Marker
-        implements Comparable<MethodLogger.Marker> {
+    private static final class Marker implements Comparable<MethodLogger.Marker> {
+
         /**
          * When the method was started, in milliseconds.
          */
         private final transient long started = System.currentTimeMillis();
+
         /**
          * Which monitoring cycle was logged recently.
          */
         private final transient AtomicInteger logged = new AtomicInteger();
+
         /**
          * The thread it's running in.
          */
         @SuppressWarnings("PMD.DoNotUseThreads")
         private final transient Thread thread = Thread.currentThread();
+
         /**
          * Joint point.
          */
         private final transient ProceedingJoinPoint point;
+
         /**
          * Annotation.
          */
         private final transient Loggable annotation;
+
         /**
          * Public ctor.
          * @param pnt Joint point
@@ -372,49 +291,33 @@ public final class MethodLogger {
             this.point = pnt;
             this.annotation = annt;
         }
+
         /**
          * Monitor it's status and log the problem, if any.
          */
         public void monitor() {
             final TimeUnit unit = this.annotation.unit();
             final long threshold = this.annotation.limit();
-            final long age = unit.convert(
-                System.currentTimeMillis() - this.started, TimeUnit.MILLISECONDS
-            );
+            final long age = unit.convert(System.currentTimeMillis() - this.started, TimeUnit.MILLISECONDS);
             final int cycle = (int) ((age - threshold) / threshold);
             if (cycle > this.logged.get()) {
-                final Method method = MethodSignature.class.cast(
-                    this.point.getSignature()
-                ).getMethod();
-                Logger.warn(
-                    method.getDeclaringClass(),
-                    "%s: takes more than %[ms]s, %[ms]s already, thread=%s/%s",
-                    Mnemos.toText(this.point, true, this.annotation.skipArgs()),
-                    TimeUnit.MILLISECONDS.convert(threshold, unit),
-                    TimeUnit.MILLISECONDS.convert(age, unit),
-                    this.thread.getName(),
-                    this.thread.getState()
-                );
-                Logger.debug(
-                    method.getDeclaringClass(),
-                    "%s: thread %s/%s stacktrace: %s",
-                    Mnemos.toText(this.point, true, this.annotation.skipArgs()),
-                    this.thread.getName(),
-                    this.thread.getState(),
-                    MethodLogger.textualize(this.thread.getStackTrace())
-                );
+                final Method method = MethodSignature.class.cast(this.point.getSignature()).getMethod();
+                Logger.warn(method.getDeclaringClass(), "%s: takes more than %[ms]s, %[ms]s already, thread=%s/%s", Mnemos.toText(this.point, true, this.annotation.skipArgs()), TimeUnit.MILLISECONDS.convert(threshold, unit), TimeUnit.MILLISECONDS.convert(age, unit), this.thread.getName(), this.thread.getState());
+                Logger.debug(method.getDeclaringClass(), "%s: thread %s/%s stacktrace: %s", Mnemos.toText(this.point, true, this.annotation.skipArgs()), this.thread.getName(), this.thread.getState(), MethodLogger.textualize(this.thread.getStackTrace()));
                 this.logged.set(cycle);
             }
         }
+
         @Override
         public int hashCode() {
             return this.point.hashCode();
         }
+
         @Override
         public boolean equals(final Object obj) {
-            return obj == this || MethodLogger.Marker.class.cast(obj)
-                .point.equals(this.point);
+            return obj == this || MethodLogger.Marker.class.cast(obj).point.equals(this.point);
         }
+
         @Override
         public int compareTo(final Marker marker) {
             int cmp = 0;
@@ -426,5 +329,4 @@ public final class MethodLogger {
             return cmp;
         }
     }
-
 }

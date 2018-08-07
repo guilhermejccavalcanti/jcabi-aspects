@@ -33,9 +33,11 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.SimpleLayout;
+import org.apache.log4j.PatternLayout;
 import org.apache.log4j.WriterAppender;
 import org.cthul.matchers.CthulMatchers;
 import org.hamcrest.MatcherAssert;
+import org.hamcrest.Matchers;
 import org.junit.Test;
 
 /**
@@ -98,20 +100,29 @@ public final class LoggableTest {
     @Test
     public void logsDurationWithSpecifiedTimeUnit() throws Exception {
         final StringWriter writer = new StringWriter();
-        org.apache.log4j.Logger.getRootLogger().addAppender(
-            new WriterAppender(new SimpleLayout(), writer)
-        );
+        org.apache.log4j.Logger.getRootLogger().addAppender(new WriterAppender(new SimpleLayout(), writer));
         LoggableTest.Foo.logsDurationInSeconds();
-        MatcherAssert.assertThat(
-            writer.toString(),
-            CthulMatchers.containsPattern("in \\d.\\d{3}")
-        );
+        MatcherAssert.assertThat(writer.toString(), CthulMatchers.containsPattern("in \\d.\\d{3}"));
+    }
+
+    /**
+     * Loggable can log methods that specify their own logger name.
+     * @throws Exception If something goes wrong
+     */
+    @Test
+    public void logsWithExplicitLoggerName() throws Exception {
+        final StringWriter writer = new StringWriter();
+        org.apache.log4j.Logger.getRootLogger().addAppender(new WriterAppender(new PatternLayout("%t %c: %m%n"), writer));
+        LoggableTest.Foo.explicitLoggerName();
+        MatcherAssert.assertThat(// @checkstyle MultipleStringLiterals (2 lines)
+        writer.toString(), Matchers.containsString("test-logger"));
     }
 
     /**
      * Parent class, without logging.
      */
     private static class Parent {
+
         /**
          * Get some text.
          * @return The text
@@ -124,16 +135,14 @@ public final class LoggableTest {
     /**
      * Dummy class, for tests above.
      */
-    @Loggable(
-        value = Loggable.DEBUG,
-        prepend = true,
-        limit = 1, unit = TimeUnit.MILLISECONDS
-    )
+    @Loggable(value = Loggable.DEBUG, prepend = true, limit = 1, unit = TimeUnit.MILLISECONDS)
     private static final class Foo extends LoggableTest.Parent {
+
         @Override
         public String toString() {
             return "some text";
         }
+
         /**
          * Get self instance.
          * @return Self
@@ -142,6 +151,7 @@ public final class LoggableTest {
         public Foo self() {
             return this;
         }
+
         /**
          * Static method.
          * @return Some text
@@ -152,6 +162,17 @@ public final class LoggableTest {
             TimeUnit.SECONDS.sleep(2L);
             return LoggableTest.Foo.hiddenText();
         }
+
+        /**
+         * Method annotated with Loggable specifying explicit logger name.
+         * @return A String
+         * @throws Exception If terminated
+         */
+        @Loggable(value = Loggable.DEBUG, name = "test-logger", prepend = true)
+        public static String explicitLoggerName() throws Exception {
+            return LoggableTest.Foo.hiddenText();
+        }
+
         /**
          * Revert string.
          * @param text Some text
@@ -162,6 +183,7 @@ public final class LoggableTest {
         public String revert(final String text) {
             return new StringBuffer(text).reverse().toString();
         }
+
         /**
          * Method with different time unit specificaiton.
          * @return Some text
@@ -172,6 +194,7 @@ public final class LoggableTest {
             TimeUnit.SECONDS.sleep(2);
             return LoggableTest.Foo.hiddenText();
         }
+
         /**
          * Private static method.
          * @return Some text
@@ -179,6 +202,7 @@ public final class LoggableTest {
         private static String hiddenText() {
             return "some static text";
         }
+
         /**
          * Always throw.
          */
@@ -187,5 +211,4 @@ public final class LoggableTest {
             throw new IllegalStateException();
         }
     }
-
 }
